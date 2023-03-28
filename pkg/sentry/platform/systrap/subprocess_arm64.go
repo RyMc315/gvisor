@@ -72,17 +72,6 @@ func createSyscallRegs(initRegs *arch.Registers, sysno uintptr, args ...arch.Sys
 	return regs
 }
 
-// isSingleStepping determines if the registers indicate single-stepping.
-func isSingleStepping(regs *arch.Registers) bool {
-	// Refer to the ARM SDM D2.12.3: software step state machine
-	// return (regs.Pstate.SS == 1) && (MDSCR_EL1.SS == 1).
-	//
-	// Since the host Linux kernel will set MDSCR_EL1.SS on our behalf
-	// when we call a single-step ptrace command, we only need to check
-	// the Pstate.SS bit here.
-	return (regs.Pstate & arch.ARMTrapFlag) != 0
-}
-
 // updateSyscallRegs updates registers after finishing sysemu.
 func updateSyscallRegs(regs *arch.Registers) {
 	// No special work is necessary.
@@ -114,7 +103,7 @@ func dumpRegs(regs *arch.Registers) string {
 }
 
 // adjustInitregsRip adjust the current register RIP value to
-// be just before the system call instruction excution
+// be just before the system call instruction execution.
 func (t *thread) adjustInitRegsRip() {
 	t.initRegs.Pc -= initRegsRipAdjustment
 }
@@ -192,13 +181,6 @@ func restoreArchSpecificState(ctx *sysmsg.ThreadContext, ac *arch.Context64) {
 }
 
 func setArchSpecificRegs(sysThread *sysmsgThread, regs *arch.Registers) {
-	if contextDecouplingExp {
-		// Set the start function and initial stack. On ARM __export_start does not
-		// actually get used because we send a signal to the thread upon startup
-		// right away (see archSpecificSysmsgThreadInit below).
-		regs.PtraceRegs.Pc = uint64(stubSysmsgStart + uintptr(sysmsg.Sighandler_blob_offset____export_start))
-		regs.PtraceRegs.Sp = uint64(sysmsg.StackAddrToSyshandlerStack(sysThread.sysmsgPerThreadMemAddr()))
-	}
 }
 
 func retrieveArchSpecificState(ctx *sysmsg.ThreadContext, ac *arch.Context64) {

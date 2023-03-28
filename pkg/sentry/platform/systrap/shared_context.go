@@ -131,13 +131,6 @@ func (sc *sharedContext) threadID() uint32 {
 	return atomic.LoadUint32(&sc.shared.ThreadID)
 }
 
-func (sc *sharedContext) setThreadID(threadID uint32) {
-	if contextDecouplingExp {
-		panic("context decoupled systrap should never explicitly set ThreadID")
-	}
-	atomic.StoreUint32(&sc.shared.ThreadID, threadID)
-}
-
 // EnableSentryFastPath indicates that the polling mode is enabled for the
 // Sentry. It has to be called before putting the context into the context queue.
 // This function is used if contextDecouplingExp=true because the fastpath

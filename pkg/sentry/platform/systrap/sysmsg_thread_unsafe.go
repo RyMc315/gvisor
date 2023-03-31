@@ -97,9 +97,9 @@ func exitsyscall()
 
 // deep_sleep_timeout is the timeout after which we stops polling and fall asleep.
 //
-// The value is 40µs for 2GHz CPU. This timeout matches the sentry<->stub round
+// The value is 100µs for 2GHz CPU. This timeout matches the sentry<->stub round
 // trip in the pure deep sleep case.
-const deepSleepTimeout = uint64(80000)
+const deepSleepTimeout = uint64(200000)
 const handshakeTimeout = uint64(1000)
 
 func futexWaitForState(msg *sysmsg.Msg, state sysmsg.ThreadState, wakeup bool, acked uint32, interruptor interrupt.Receiver) syscall.Errno {

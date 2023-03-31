@@ -15,6 +15,7 @@
 package sysmsg
 
 import (
+	"fmt"
 	"syscall"
 	"unsafe"
 
@@ -24,7 +25,7 @@ import (
 	"gvisor.dev/gvisor/pkg/sentry/platform/interrupt"
 )
 
-const maxFutexSleepSeconds = 60
+const maxFutexSleepSeconds = 15
 
 // SleepOnState makes the caller sleep on the Msg.State futex.
 func (m *Msg) SleepOnState(curState ThreadState, interruptor interrupt.Receiver) syscall.Errno {
@@ -39,7 +40,7 @@ func (m *Msg) SleepOnState(curState ThreadState, interruptor interrupt.Receiver)
 			linux.FUTEX_WAIT, uintptr(curState), uintptr(unsafe.Pointer(&futexTimeout)), 0, 0)
 		if errno == unix.ETIMEDOUT {
 			interruptor.NotifyInterrupt()
-			if !sentInterruptOnce {
+			if sentInterruptOnce {
 				log.Warningf("Systrap task goroutine has been waiting on Msg.State futex too long. Msg: %s", m.String())
 			}
 			sentInterruptOnce = true
@@ -66,8 +67,8 @@ func (c *ThreadContext) SleepOnState(curState ContextState, interruptor interrup
 			linux.FUTEX_WAIT, uintptr(curState), uintptr(unsafe.Pointer(&futexTimeout)), 0, 0)
 		if errno == unix.ETIMEDOUT {
 			interruptor.NotifyInterrupt()
-			if !sentInterruptOnce {
-				log.Warningf("Systrap task goroutine has been waiting on ThreadContext.State futex too long. ThreadContext: %s", c.String())
+			if sentInterruptOnce {
+				panic(fmt.Sprintf("Systrap task goroutine has been waiting on ThreadContext.State futex too long. ThreadContext: %s", c.String()))
 			}
 			sentInterruptOnce = true
 		} else {

@@ -96,6 +96,10 @@ type servedSandbox struct {
 	// added for the whole sandbox.
 	capabilities []linux.Capability
 
+	// specMetadataLabels is the set of label exported as part of the
+	// `spec_metadata` metric.
+	specMetadataLabels map[string]string
+
 	// verifier allows verifying the data integrity of the metrics we get from this sandbox.
 	// It is not always initialized when the sandbox is discovered, but rather upon first metrics
 	// access to the sandbox. Metric registration data is loaded from the root container's
@@ -139,6 +143,36 @@ func sandboxPrometheusLabels(rootContainer *container.Container) (map[string]str
 		labels[prometheus.NamespaceLabel] = s.Namespace
 	}
 	return labels, nil
+}
+
+// ComputeSpecMetadata returns the labels for the `spec_metadata` metric.
+// It merges data from the Specs of multiple containers running within the
+// same sandbox.
+// This function must support being called with `allContainers` being nil.
+// It must return the same set of label keys regardless of how many containers
+// are in `allContainers`.
+func ComputeSpecMetadata(allContainers []*container.Container) map[string]string {
+	const (
+		unknownOCIVersion      = "UNKNOWN"
+		inconsistentOCIVersion = "INCONSISTENT"
+	)
+
+	hasUID0Container := false
+	ociVersion := unknownOCIVersion
+	for _, cont := range allContainers {
+		if cont.RunsAsUID0() {
+			hasUID0Container = true
+		}
+		if ociVersion == unknownOCIVersion {
+			ociVersion = cont.Spec.Version
+		} else if ociVersion != cont.Spec.Version {
+			ociVersion = inconsistentOCIVersion
+		}
+	}
+	return map[string]string{
+		"hasuid0":    strconv.FormatBool(hasUID0Container),
+		"ociversion": ociVersion,
+	}
 }
 
 // load loads the sandbox being monitored and initializes its metric verifier.
@@ -212,6 +246,9 @@ func (s *servedSandbox) load() (*sandbox.Sandbox, *prometheus.Verifier, error) {
 				s.capabilities[i] = capLabels
 			}
 		}
+
+		// Compute spec metadata.
+		s.specMetadataLabels = ComputeSpecMetadata(allContainers)
 
 		s.sandbox = rootContainer.Sandbox
 		s.createdAt = rootContainer.CreatedAt
@@ -573,10 +610,15 @@ var (
 		Help: "Linux capabilities added within containers of the sandbox.",
 	}
 	SandboxCapabilitiesMetricLabel = "capability"
-	SandboxCreationMetric          = prometheus.Metric{
+	SpecMetadataMetric             = prometheus.Metric{
+		Name: "spec_metadata",
+		Type: prometheus.TypeGauge,
+		Help: "Key-value pairs about OCI spec metadata.",
+	}
+	SandboxCreationMetric = prometheus.Metric{
 		Name: "sandbox_creation_time_seconds",
 		Type: prometheus.TypeGauge,
-		Help: "When the sandbox was created, as a unix timestamp in milliseconds.",
+		Help: "When the sandbox was created, as a unix timestamp in seconds.",
 	}
 	NumRunningSandboxesMetric = prometheus.Metric{
 		Name: "num_sandboxes_running",
@@ -600,6 +642,8 @@ var ServerMetrics = []prometheus.Metric{
 	SandboxPresenceMetric,
 	SandboxRunningMetric,
 	SandboxMetadataMetric,
+	SandboxCapabilitiesMetric,
+	SpecMetadataMetric,
 	SandboxCreationMetric,
 	NumRunningSandboxesMetric,
 	NumCannotExportSandboxesMetric,
@@ -765,6 +809,7 @@ func (m *MetricServer) serveMetrics(w http.ResponseWriter, req *http.Request) ht
 								SandboxCapabilitiesMetricLabel: cap.TrimmedString(),
 							}, 1).SetExternalLabels(served.extraLabels))
 						}
+						selfMetrics.Add(prometheus.LabeledIntData(&SpecMetadataMetric, served.specMetadataLabels, 1).SetExternalLabels(served.extraLabels))
 						createdAt := float64(served.createdAt.Unix()) + (float64(served.createdAt.Nanosecond()) / 1e9)
 						selfMetrics.Add(prometheus.LabeledFloatData(&SandboxCreationMetric, nil, createdAt).SetExternalLabels(served.extraLabels))
 					}

@@ -109,6 +109,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("failed to get all tests: %v", err)
 		}
+		log.Printf("Tests: %#v\n", tests)
 	} else {
 		// Run subset of test.
 		tests = strings.Split(*testNames, ",")
